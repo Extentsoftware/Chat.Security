@@ -152,8 +152,10 @@ class RemoteServer:
 def _register(server: RemoteServer, tool: dict[str, Any], pin: str) -> str:
     name = local_name(server.name, tool["name"])
     existing = TOOLS.get(name)
-    if existing is not None and not existing.remote:
-        raise McpError(f"{name} would shadow a local tool")
+    if existing is not None:
+        # Local tools, and remote ones too: server "a" with tool "b__c" and server "a__b" with tool "c"
+        # (or two long names cut at 64 characters) map to the same name, and the later one would win.
+        raise McpError(f"{name} would shadow {'a local tool' if not existing.remote else 'another external tool'}")
     schema = tool.get("inputSchema") or {}
     props = schema.get("properties") or {}
     required = set(schema.get("required") or [])

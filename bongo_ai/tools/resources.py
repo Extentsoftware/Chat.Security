@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
 from typing import Annotated
 
@@ -188,7 +189,8 @@ def SendSuggestions(ctx: ToolContext, suggestion1: Annotated[str, "First choice"
                     contextMessage: Annotated[str | None, "Optional prompt shown above the choices"] = None):
     items = [s[:200] for s in (suggestion1, suggestion2, suggestion3, suggestion4) if s]
     # A suggestion that looks like a confirmation label is dropped: only the server mints those.
-    items = [s for s in items if not s.lower().startswith("confirm ")]
+    # The chat strips the user's message before comparing it with the label, so leading whitespace must not hide one.
+    items = [s for s in items if not re.match(r"\s*confirm\b", s, re.IGNORECASE)]
     ctx.emit({"type": "suggestion", "suggestions": items, "contextMessage": contextMessage})
     return "Suggestions shown to the user."
 

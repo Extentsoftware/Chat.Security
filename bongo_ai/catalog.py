@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 
 from .registry import TOOLS, ToolDef
-from .security import Principal, can_use_chat_write_tools
+from .security import Perm, Principal, can_use_chat_write_tools
 
 HARNESS_PLUGIN = "HarnessPlugin"
 UI_PLUGIN = "UserInterfaceCommandPlugin"
@@ -40,6 +40,14 @@ TRUSTED_OUTPUT = {
     # Writes whose result only echoes what the model itself sent plus server-built text (ids, states,
     # section codes). Writes that echo a stored title or reason (Complete, Hold, Edit...) stay untrusted.
     "CreateActivity", "CreateObservation", "SetActivityActuals", "ProposeSprayPurchaseTask",
+}
+
+# The assistant must not read what the person could not see in the app: a plugin's tools need the
+# matching view permission (the same one the REST endpoints check). Plugins not listed need only p-ai.
+PLUGIN_PERMISSIONS = {
+    "ObservationsPlugin": Perm.VIEW_OBSERVATIONS, "ScoutSessionsPlugin": Perm.VIEW_OBSERVATIONS,
+    "ActivitiesPlugin": Perm.VIEW_ACTIVITIES, "ChemicalPlugin": Perm.VIEW_CHEMICALS,
+    "FuelPlugin": Perm.VIEW_FUEL, "ReportsPlugin": Perm.VIEW_REPORT,
 }
 
 # Writes that only regenerate a derived report from the farm's own data: allowed in a tainted
@@ -95,6 +103,9 @@ def explain(principal: Principal, template_tools: list[str] | None = None, chann
             reason = "External server is not enabled for this farm"
         elif patterns and td.plugin != HARNESS_PLUGIN and not any(p.search(td.plugin) for p in patterns):
             reason = "Not in this chat template's tool list"
+        elif principal.is_authenticated and td.plugin in PLUGIN_PERMISSIONS \
+                and not principal.has(PLUGIN_PERMISSIONS[td.plugin]):
+            reason = f"Needs permission {PLUGIN_PERMISSIONS[td.plugin]} to read {td.plugin} data"
         elif not principal.is_authenticated:
             if td.plugin == HARNESS_PLUGIN:
                 reason = "Skills and subagents are for a signed-in person"
@@ -119,8 +130,8 @@ def permitted(principal: Principal, template_tools: list[str] | None = None, cha
     return [a.tool for a in explain(principal, template_tools, channel) if a.allowed]
 
 
-def for_subagent() -> list[ToolDef]:
-    """Farm reads only. No writes, no UI commands, no harness (so a child cannot start a child),
-    and no external tools (a subagent cannot ask anyone to confirm an outbound call)."""
-    return [td for td in TOOLS.values()
+def for_subagent(principal: Principal) -> list[ToolDef]:
+    """Farm reads the parent's user may use. No writes, no UI commands, no harness (so a child cannot
+    start a child), and no external tools (a subagent cannot ask anyone to confirm an outbound call)."""
+    return [td for td in permitted(principal)
             if td.plugin not in (HARNESS_PLUGIN, UI_PLUGIN) and not is_mutating(td.name) and not td.remote]

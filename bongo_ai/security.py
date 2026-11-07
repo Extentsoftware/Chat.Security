@@ -182,6 +182,7 @@ def login(username: str | None, password: str | None, ip: str | None = None) -> 
         return failure
 
     if user["lockout_until"] and datetime.fromisoformat(user["lockout_until"]) > now_utc():
+        verify_password(_DUMMY_HASH, password or "")  # a fast reply would show the username exists
         log_event("login_failed", user["username"], user["tenant_id"], "temporary lockout active", ip)
         return failure
 
@@ -228,6 +229,11 @@ def decode_token(token: str) -> Principal:
     user = db.row("SELECT is_locked, is_disabled FROM users WHERE id = ?", (claims.get("UserId"),))
     if user is None or user["is_locked"] or user["is_disabled"]:
         raise AuthError("Account is no longer active")
+    # An impersonation token also dies with the real person behind it.
+    if claims.get("act"):
+        actor = db.row("SELECT is_locked, is_disabled FROM users WHERE username = ? COLLATE NOCASE", (claims["act"],))
+        if actor is None or actor["is_locked"] or actor["is_disabled"]:
+            raise AuthError("Account is no longer active")
 
     return Principal(
         user_id=claims.get("UserId", ""), username=claims["sub"], given_name=claims.get("given_name", ""),
@@ -253,6 +259,8 @@ def impersonate(actor: Principal, target_user_id: str) -> dict[str, Any]:
     """AuthController.Impersonate."""
     if not actor.has(Perm.IMPERSONATE):
         raise AuthError("Forbidden", 403)
+    if actor.impersonated_by:  # no chains: the act claim must always name the real person
+        raise AuthError("Forbidden: already impersonating", 403)
     target = db.row("SELECT * FROM users WHERE id = ?", (target_user_id,))
     if target is None:
         raise AuthError("Not found", 404)
@@ -261,6 +269,11 @@ def impersonate(actor: Principal, target_user_id: str) -> dict[str, Any]:
     target_tenant = db.row("SELECT * FROM tenants WHERE id = ?", (target["tenant_id"],))
     if target_tenant is None or target_tenant["company_id"] != actor.company_id:
         log_event("impersonation_denied", actor.username, actor.tenant_id, f"target {target['username']} outside company")
+        raise AuthError("Forbidden", 403)
+    extra = sorted(set(permissions_for_role(target["role_id"])) - set(actor.permissions))
+    if extra:  # impersonation must not be a way to gain permissions
+        log_event("impersonation_denied", actor.username, actor.tenant_id,
+                  f"target {target['username']} holds permissions the actor lacks: {', '.join(extra)}")
         raise AuthError("Forbidden", 403)
     log_event("impersonation", actor.username, actor.tenant_id, f"now acting as {target['username']}")
     result = issue_token(target, impersonated_by=actor.username)

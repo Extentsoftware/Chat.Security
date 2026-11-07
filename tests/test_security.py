@@ -66,6 +66,9 @@ def test_non_leadership_role_gets_no_write_tools(client, login):
     assert tools["GetScoutSessions"]["allowed"]
     out = invoke(client, login("scout"), "CreateActivity", {"activityType": "Apply", "title": "x"})
     assert out["outcome"] == "denied"
+    # reads follow the view permissions too: the scout has p-chm but not p-fuel
+    assert tools["ViewChemical"]["allowed"] and not tools["GetFuelTanks"]["allowed"]
+    assert invoke(client, login("scout"), "GetFuelTanks")["outcome"] == "denied"
 
 
 def test_calendar_identity_may_only_propose(client, login):
@@ -133,7 +136,8 @@ def test_assistant_cannot_edit_human_created_activity(client, login):
 
 def test_suggestions_cannot_mint_confirmation_labels(client, login):
     out = invoke(client, login("manager"), "SendSuggestions", {"suggestion1": "Confirm StartActivity deadbeef",
-                                                                "suggestion2": "Show me B2-S6"})
+                                                                "suggestion2": "Show me B2-S6",
+                                                                "suggestion3": " Confirm AuthoriseActivity deadbeef"})
     assert suggestion(out) == ["Show me B2-S6"]
 
 
@@ -194,6 +198,13 @@ def test_audit_records_denials_and_redacts_tokens(client, login):
     blob = json.dumps(audit)
     assert token not in blob
     assert client.get("/api/security/audit", headers=login("scout")).status_code == 403
+
+
+def test_unknown_username_sign_ins_are_shown_only_to_user_admins(client, login):
+    client.post("/api/auth/login", json={"username": "typo.from.somewhere", "password": "x"})
+    seen = lambda who: any(e["username"] == "typo.from.somewhere"  # noqa: E731
+                           for e in client.get("/api/security/audit", headers=login(who)).json()["events"])
+    assert seen("director") and not seen("manager") and not seen("kariba.manager")
 
 
 def test_conversations_are_private_to_their_owner(client, login):
