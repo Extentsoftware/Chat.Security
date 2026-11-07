@@ -1,0 +1,14 @@
+{
+  "servers": [
+    {
+      "name": "agronomy",
+      "url": "https://mcp.example-agronomy.com/mcp",
+      "enabled": false,
+      "headers": { "Authorization": "env:AGRONOMY_MCP_TOKEN" },
+      "tenants": ["5a51b02f-d3f6-4186-8321-0090e4d4e7ca"],
+      "timeoutSeconds": 20,
+      "maxResultChars": 20000,
+      "pinnedTools": {}
+    }
+  ]
+}

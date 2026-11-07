@@ -1,0 +1,15 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+  "python.envFile": "${workspaceFolder}/.env",
+  "python.terminal.activateEnvironment": true,
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.cwd": "${workspaceFolder}",
+  "python.testing.pytestArgs": ["tests", "-W", "ignore::jwt.warnings.InsecureKeyLengthWarning"],
+  "python.analysis.extraPaths": ["${workspaceFolder}", "${workspaceFolder}/scripts"],
+  "files.exclude": {
+    "**/__pycache__": true,
+    ".pytest_cache": true
+  },
+  "python.terminal.useEnvFile": true
+}

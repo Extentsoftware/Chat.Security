@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bongo AI Demo</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js" defer></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <!-- login -->
+  <section id="login-view" class="login hidden">
+    <form id="login-form" class="card login-card" autocomplete="off">
+      <div class="brand"><span class="logo">B</span><div><h1>Bongo AI</h1><p>Farm assistant · security demo</p></div></div>
+      <label>Username<input id="login-user" name="username" required maxlength="100" autocomplete="username"></label>
+      <label>Password<input id="login-pass" name="password" type="password" required maxlength="200" autocomplete="current-password"></label>
+      <button type="submit" class="primary">Sign in</button>
+      <p id="login-error" class="error hidden"></p>
+      <div class="demo-users">
+        <p>Demo accounts (password in the README):</p>
+        <div id="demo-user-buttons"></div>
+      </div>
+    </form>
+  </section>
+
+  <!-- app -->
+  <section id="app-view" class="hidden">
+    <header class="topbar">
+      <div class="brand small"><span class="logo">B</span><strong>Bongo AI</strong></div>
+      <nav id="tabs">
+        <button data-tab="chat" class="active">Chat</button>
+        <button data-tab="scout">Scout data</button>
+        <button data-tab="activities">Activities</button>
+        <button data-tab="console">Tool console</button>
+        <button data-tab="security">Security</button>
+      </nav>
+      <div class="who">
+        <span id="impersonation-badge" class="badge warn hidden"></span>
+        <span id="who-name"></span>
+        <span id="who-role" class="badge"></span>
+        <button id="logout-btn" class="ghost">Sign out</button>
+      </div>
+    </header>
+    <div id="data-banner" class="banner"></div>
+
+    <!-- chat -->
+    <main id="tab-chat" class="tab chat-layout">
+      <aside class="sidebar">
+        <label class="field">Template
+          <select id="template-select"></select>
+        </label>
+        <button id="new-chat-btn" class="primary">New chat</button>
+        <h3>Conversations</h3>
+        <ul id="conversation-list" class="conv-list"></ul>
+      </aside>
+      <section class="chat-main">
+        <div id="chat-messages" class="messages"></div>
+        <div id="taint-banner" class="taint hidden"></div>
+        <div id="chat-suggestions" class="suggestions"></div>
+        <form id="chat-form" class="composer">
+          <textarea id="chat-input" rows="2" maxlength="8000" placeholder="Ask about scouting, sprays, activities, equipment, fuel…"></textarea>
+          <button type="submit" class="primary" id="chat-send">Send</button>
+        </form>
+        <p id="chat-disabled" class="error hidden">Your role does not include the AI assistant permission (p-ai). The server will refuse chat requests.</p>
+      </section>
+    </main>
+
+    <!-- scout -->
+    <main id="tab-scout" class="tab hidden">
+      <div class="grid2">
+        <div class="card"><h2>Sections</h2><div id="scout-map" class="map"></div>
+          <p class="muted legend"><span class="dot green"></span>≤5 days <span class="dot orange"></span>6–10 <span class="dot red"></span>&gt;10 / never</p></div>
+        <div class="card scroll"><h2>Scout sessions</h2><table id="sessions-table" class="table"></table></div>
+      </div>
+      <div class="card hidden" id="session-detail"></div>
+    </main>
+
+    <!-- activities -->
+    <main id="tab-activities" class="tab hidden">
+      <div class="card"><h2>Activities</h2><p class="muted">State changes made through the assistant are recorded with who asked and on which channel.</p>
+        <div id="activities-list"></div></div>
+    </main>
+
+    <!-- console -->
+    <main id="tab-console" class="tab hidden">
+      <div class="grid2">
+        <div class="card">
+          <h2>Tool console</h2>
+          <p class="muted">Call a tool directly with your token. It runs through the same executor the assistant uses: role filter, argument validation, confirmation gate, write lock and audit.</p>
+          <label class="field">Tool<select id="console-tool"></select></label>
+          <p id="console-desc" class="muted"></p>
+          <div id="console-args"></div>
+          <label class="field">Your message (what you typed as the user)
+            <input id="console-message" maxlength="500" placeholder="Leave empty, or paste a confirmation label">
+          </label>
+          <button id="console-run" class="primary">Run</button>
+        </div>
+        <div class="card scroll"><h2>Result</h2><div id="console-result" class="muted">No call yet.</div></div>
+      </div>
+    </main>
+
+    <!-- security -->
+    <main id="tab-security" class="tab hidden">
+      <div class="grid2">
+        <div class="card"><h2>Your token</h2><table id="claims-table" class="table kv"></table>
+          <p class="muted">Signed HS256, checked on every request together with the revocation list and the account's locked/disabled flags.</p></div>
+        <div class="card"><h2>Connect an MCP client</h2>
+          <p class="muted">The same tools, the same token, the same rules. Gated tools and chat-only tools are withheld over MCP.</p>
+          <pre id="mcp-snippet" class="code"></pre>
+          <div id="impersonate-card" class="hidden"><h2>Impersonate (a-stg-imp)</h2><div id="impersonate-list"></div></div>
+          <div id="calendar-card" class="hidden"><h2>Calendar identity</h2>
+            <p class="muted">Runs the spray planner with no signed-in person: it may propose but never authorise or start.</p>
+            <button id="calendar-run" class="ghost">Run spray planner as calendar</button><div id="calendar-result"></div></div>
+        </div>
+      </div>
+      <div class="card"><h2>Tool access</h2>
+        <label class="field inline">Template <select id="access-template"></select></label>
+        <div id="access-table"></div></div>
+      <div class="card hidden" id="remote-card"><h2>Remote MCP servers</h2>
+        <p class="muted">Only allow-listed servers, only tools whose exact definition an admin approved. Their output is always treated as untrusted.</p>
+        <div id="remote-mcp"></div></div>
+      <div class="card" id="audit-card"><h2>Audit</h2><div id="audit"></div></div>
+    </main>
+  </section>
+  <div id="toast" class="toast hidden"></div>
+</body>
+</html>
