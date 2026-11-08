@@ -244,8 +244,14 @@ def _check_confirmation(state: RunState, td: ToolDef, public: dict[str, Any], ca
             and state.user_prompt.strip() == pending["label"] \
             and pending["functionName"].lower() == td.name.lower() \
             and pending["canonicalArguments"] == canonical:
-        _set_pending(state.conversation_id, None)
-        return None
+        # Consume the label atomically, so two requests racing with the same label cannot both run the call.
+        with db.write() as conn:
+            consumed = conn.execute(
+                "UPDATE chat_conversations SET pending_tool_json = NULL WHERE id = ? AND pending_tool_json = ?",
+                (state.conversation_id, json.dumps(pending))).rowcount
+        if consumed:
+            return None
+        pending = None
 
     reuse = pending and datetime.fromisoformat(pending["expiresAt"]) > now \
         and pending["functionName"].lower() == td.name.lower() and pending["canonicalArguments"] == canonical

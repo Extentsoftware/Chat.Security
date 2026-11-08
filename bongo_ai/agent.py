@@ -267,10 +267,11 @@ def run_subagent(provider, profile: str, task: str, parent: RunState) -> str:
     sys = (f"You are a read-only {profile} subagent for a farm assistant. You cannot write and cannot start other "
            f"subagents. {'Return a short numbered plan of tool calls and decisions; do not perform writes.' if profile == 'plan' else 'Return findings only.'}"
            f" Today's farm date is {farm_today().isoformat()}.\n\n{SECURITY_RULES}")
+    tools = catalog.for_subagent(parent.principal)
     state = RunState(principal=parent.principal, channel="subagent", conversation_id=None, max_calls=12,
-                     allowed_override=catalog.for_subagent(), emit=lambda e: None)
+                     allowed_override=tools, emit=lambda e: None)
     history = [provider.user_turn(task)]
-    text = _loop(provider, sys, history, state, catalog.for_subagent(), lambda e: None)
+    text = _loop(provider, sys, history, state, tools, lambda e: None)
     return f"Subagent ({profile}) result:\n{text}"
 
 

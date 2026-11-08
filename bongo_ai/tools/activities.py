@@ -46,7 +46,7 @@ def _row(ctx: ToolContext, a: dict) -> dict:
     return out
 
 
-def _parse_details(details_json: str | None) -> tuple[str | None, str | None]:
+def _parse_details(ctx: ToolContext, details_json: str | None) -> tuple[str | None, str | None]:
     if not details_json:
         return None, None
     try:
@@ -58,7 +58,7 @@ def _parse_details(details_json: str | None) -> tuple[str | None, str | None]:
     for chem in parsed.get("chemicals", []) or []:
         cid = chem.get("chemicalId")
         if cid:
-            found = db.row("SELECT name FROM chemicals WHERE id = ?", (cid,))
+            found = db.row("SELECT name FROM chemicals WHERE id = ? AND tenant_id = ?", (cid, ctx.tenant_id))
             if found is None:
                 return None, f"Error: chemicalId '{cid}' not found. Use ViewChemical to get ids."
             chem.setdefault("name", found["name"])
@@ -89,7 +89,7 @@ def CreateActivity(ctx: ToolContext,
         return "Error: priority must be Low, Medium, High or Critical."
     ids = validate_section_ids(ctx.tenant_id, farmSectionIds)
     start = parse_farm_date(plannedStart)
-    details, err = _parse_details(detailsJson)
+    details, err = _parse_details(ctx, detailsJson)
     if err:
         return err
     aid, now = new_id(), utc_now()
@@ -137,7 +137,7 @@ def EditActivity(ctx: ToolContext,
     if team is not None:
         updates["team"] = team
     if detailsJson is not None:
-        details, err = _parse_details(detailsJson)
+        details, err = _parse_details(ctx, detailsJson)
         if err:
             return err
         updates["details_json"] = details

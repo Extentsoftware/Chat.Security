@@ -45,6 +45,11 @@ class Settings:
     max_tool_calls: int = 24  # ToolInvocationFilter.InteractiveToolCallCap
     weather_online: bool = field(default_factory=lambda: _env("BONGO_WEATHER_ONLINE", "1") != "0")
 
+    def __post_init__(self) -> None:
+        if len(self.jwt_key.encode()) < 32:  # RFC 7518 3.2: an HS256 key needs at least 256 bits
+            raise ValueError("BONGO_JWT_KEY must be at least 32 bytes. "
+                             "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(48))\"")
+
     def provider(self) -> str:
         """foundry | anthropic | openai | offline. Explicit setting wins; otherwise whichever is configured."""
         if self.llm_provider in ("foundry", "anthropic", "openai", "offline"):

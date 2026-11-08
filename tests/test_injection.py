@@ -204,7 +204,7 @@ def test_remote_tools_are_kept_away_from_risky_channels(remote, login):
     mgr = principal(login, "manager")
     assert "ext_agro__get_soil_report" in names(catalog.permitted(mgr))
     assert "ext_agro__get_soil_report" not in names(catalog.permitted(mgr, channel="mcp"))
-    assert "ext_agro__get_soil_report" not in names(catalog.for_subagent())
+    assert "ext_agro__get_soil_report" not in names(catalog.for_subagent(mgr))
     assert "ext_agro__get_soil_report" not in names(catalog.permitted(Principal.calendar_runner(BONGO)))
     assert "ext_agro__get_soil_report" not in names(catalog.permitted(principal(login, "kariba.manager")))
     assert "ext_agro__set_irrigation" not in names(catalog.permitted(principal(login, "scout")))  # a write

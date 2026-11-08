@@ -33,7 +33,7 @@ Open the `Chat.Security` folder (File → Open Folder) so `.vscode/` is picked u
 
 1. First time only: *Terminal → Run Task → Setup: create venv and install requirements*, then *Seed database*.
 2. Copy `.env.example` to `.env` and add `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` if you want live chat.
-   Set `BONGO_JWT_KEY` so restarts don't sign you out.
+   Set `BONGO_JWT_KEY` (at least 32 bytes) so restarts don't sign you out.
 3. Press **F5** and pick **Bongo AI: web server**. Breakpoints work in `bongo_ai/`, and the browser opens
    when the server is up. For edit-and-reload without the debugger, use *Run Task → Run web server (auto-reload)*.
 4. Tests show in the Testing panel (beaker icon), or run the **Tests (pytest)** debug config.
@@ -66,12 +66,13 @@ the exact same security pipeline, so the whole security demo still works.
 
 1. **Token login.** HS256 JWT with the same claims as the C# issuer (`sub`, `UserId`, `RoleId`,
    `Rolename`, `Permissions`, `tenant_id`, `company_id`, `site_id`…). One generic "Login failure"
-   for every reason, with equal timing for unknown users. PBKDF2 password hashes. On every request
+   for every reason, with equal timing for unknown and locked-out users. PBKDF2 password hashes. On every request
    the token is checked against a revocation list (sign-out) and the account's locked/disabled flags.
    *Demo additions:* lockout after 5 bad passwords (15 min), per-IP login rate limit.
 2. **Role-based tool filtering** (`ChatToolCatalog.Filter`). Non-leadership roles lose every write
-   tool. The unattended **calendar identity** may only propose. Templates narrow the tool set.
-   Subagents get farm reads only. See *Security → Tool access* for the full matrix and the reason
+   tool. Reads follow the same view permissions as the REST API (`p-obs`, `p-act`, `p-chm`, `p-fuel`,
+   `p-rpt`), so the assistant never reads more than the person could: the scout gets no fuel or reports. The unattended **calendar identity** may only propose. Templates narrow the tool set.
+   Subagents get only the farm reads their user may use. See *Security → Tool access* for the full matrix and the reason
    behind every "no".
 3. **Defence in depth.** The model is only offered permitted tools, but the executor re-checks every
    call, so a forged call to an unoffered tool is refused and audited. Arguments are validated
@@ -91,16 +92,18 @@ the exact same security pipeline, so the whole security demo still works.
 8. **Tenant isolation.** Every table has `tenant_id`, taken from the token, never from arguments.
    Log in as `kariba.manager` and as `manager` and compare. A Kariba session id is "not found" for Bongo.
 9. **Conversation privacy.** Conversations belong to one user. Other users get 404.
-10. **Impersonation.** Requires `a-stg-imp`, stays inside the actor's company, and the token
-    carries an `act` claim, so the audit shows who is really acting.
+10. **Impersonation.** Requires `a-stg-imp`, stays inside the actor's company, cannot target a user with
+    permissions the actor lacks, and cannot be chained. The token carries an `act` claim, so the audit shows
+    who is really acting, and it stops working when the real actor is locked or disabled.
 11. **Audit.** Every tool call is logged (user, role, channel, arguments, outcome), along with every
-    sign-in event. Bearer tokens/JWTs are scrubbed before anything is stored.
+    sign-in event. Bearer tokens/JWTs are scrubbed before anything is stored. Sign-in attempts for unknown
+    usernames (no tenant) are shown only to user admins (`a-stg-usr`).
 12. **MCP with the same rules.** `POST /mcp` needs the bearer token and applies the same role filter.
     Gated tools and chat-only tools are withheld, because MCP cannot prove a human confirmed.
     Rate limited per token.
 13. **Browser hardening.** Strict CSP (no inline script), `X-Frame-Options: DENY`, `no-store` on the
     API. Model Markdown is sanitised with DOMPurify. Everything else is rendered with `textContent`.
-    Leaflet is SRI-pinned. The token lives in `sessionStorage` (cleared when the tab closes).
+    marked, DOMPurify and Leaflet are SRI-pinned, and the CSP allows those exact files rather than whole CDNs. The token lives in `sessionStorage` (cleared when the tab closes).
 
 ## Prompt-injection defences
 
@@ -185,7 +188,7 @@ To load the **live** last month instead, port-forward the BongoFMS PostgreSQL an
 .venv/Scripts/python -m pytest -q
 ```
 
-51 tests cover login, tokens (forged, `alg=none`, revoked), lockout, role filtering, the calendar
+52 tests cover login, tokens (forged, `alg=none`, revoked), lockout, role filtering, the calendar
 identity, confirmation labels, injected labels, layered authorisation, tenant isolation, impersonation,
 MCP, audit redaction and conversation privacy. `tests/test_injection.py` covers taint gating, the
 envelope and scanner, tainted MCP sessions, and remote MCP pinning, namespacing, credential isolation

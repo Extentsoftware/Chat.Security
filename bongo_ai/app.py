@@ -34,9 +34,14 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="Bongo AI demo", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
-CSP = ("default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com; "
-       "style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: https://tile.openstreetmap.org https://server.arcgisonline.com "
-       "https://unpkg.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+# Third-party scripts are allowed by exact file, not by CDN host: a whole CDN would let injected markup load any
+# package's script. index.html pins the same files with SRI hashes.
+CSP = ("default-src 'self'; "
+       "script-src 'self' https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js "
+       "https://cdn.jsdelivr.net/npm/dompurify@3.4.17/dist/purify.min.js https://unpkg.com/leaflet@1.9.4/dist/leaflet.js; "
+       "style-src 'self' 'unsafe-inline' https://unpkg.com/leaflet@1.9.4/dist/leaflet.css; "
+       "img-src 'self' data: https://tile.openstreetmap.org https://server.arcgisonline.com https://unpkg.com/leaflet@1.9.4/dist/images/; "
+       "connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 
 
 @app.middleware("http")
@@ -313,8 +318,11 @@ def api_audit(p: Principal = Depends(require(Perm.VIEW_SECURITY))):
         "tools": db.rows("""SELECT at, username, rolename, channel, tool_name AS tool, arguments_json AS arguments,
                                    outcome, detail FROM tool_audit WHERE tenant_id = ? ORDER BY id DESC LIMIT 200""",
                          (p.tenant_id,)),
+        # Events with no tenant are either system events (no username, e.g. remote MCP pins) or sign-in
+        # attempts for unknown usernames, which can come from any farm. Only user admins see the latter.
         "events": db.rows("""SELECT at, username, event, detail, ip FROM security_events
-                             WHERE tenant_id = ? OR tenant_id IS NULL ORDER BY id DESC LIMIT 200""", (p.tenant_id,)),
+                             WHERE tenant_id = ? OR (tenant_id IS NULL AND (username IS NULL OR ?))
+                             ORDER BY id DESC LIMIT 200""", (p.tenant_id, p.has(Perm.MANAGE_USERS))),
     }
 
 
